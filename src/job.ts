@@ -125,11 +125,17 @@ export class Job {
     if (this._completed) return;
     this._completed = true;
 
+    const startTs = this._events[0]?.timestamp ?? Date.now();
+    const now = Date.now();
+
     this._events.push({
       jobId: this.id,
       type: 'job.skipped',
-      timestamp: Date.now(),
-      data: { message: reason },
+      timestamp: now,
+      data: {
+        message: reason,
+        durationMs: now - startTs,
+      },
     });
 
     await this._sendFn(this._events);
@@ -142,11 +148,17 @@ export class Job {
     if (this._completed) return;
     this._completed = true;
 
+    const startTs = this._events[0]?.timestamp ?? Date.now();
+    const now = Date.now();
+
     this._events.push({
       jobId: this.id,
       type: 'job.review',
-      timestamp: Date.now(),
-      data: { message: reason },
+      timestamp: now,
+      data: {
+        message: reason,
+        durationMs: now - startTs,
+      },
     });
 
     await this._sendFn(this._events);
