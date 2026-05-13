@@ -30,3 +30,6 @@ npm-debug.log*
 yarn.lock
 pnpm-lock.yaml
 .npmrc
+
+# Local notes
+RELEASE.md
