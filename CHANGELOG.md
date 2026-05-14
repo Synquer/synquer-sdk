@@ -4,6 +4,21 @@ All notable changes to `synquer-sdk` are documented here.
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-05-14
+
+### Added
+- `job.setExternalId(id)` — set or update the external ID after job creation. Useful when the upstream system only returns its ID after the work runs (SAP order number, Stripe payment intent, etc.).
+- `externalId` getter on `Job` — read the current external ID.
+- Optional `{ externalId }` second argument on `done()`, `failed()`, `skip()`, `review()` — sugar over `setExternalId()` for the case where you only learn the ID from the terminal work itself.
+
+### Changed
+- Terminal events (`job.done`, `job.failed`, `job.skipped`, `job.review`) now carry the current `externalId` on the envelope. Backwards-compatible — the server only uses this when the started event has no external ID.
+
+### Notes
+- Requires server-side support (synquer-platform 2026-05-14 or later) to read external IDs from terminal events. Older platforms see this as a no-op.
+
+[0.2.0]: https://github.com/Synquer/synquer-sdk/releases/tag/0.2.0
+
 ## [0.1.0] - 2026-05-07
 
 First public release.

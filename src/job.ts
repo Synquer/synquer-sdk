@@ -9,6 +9,7 @@ import type { JobOptions, EventOptions, IngestEvent } from './types.js';
  */
 export class Job {
   readonly id: string;
+  private _externalId: string | undefined;
   private readonly _events: IngestEvent[] = [];
   private readonly _sendFn: (events: IngestEvent[]) => Promise<void>;
   private _completed = false;
@@ -19,12 +20,13 @@ export class Job {
     sendFn: (events: IngestEvent[]) => Promise<void>,
   ) {
     this.id = id;
+    this._externalId = options.externalId;
     this._sendFn = sendFn;
 
     // Add the started event immediately
     this._events.push({
       jobId: this.id,
-      externalId: options.externalId,
+      externalId: this._externalId,
       type: 'job.started',
       timestamp: Date.now(),
       data: {
@@ -35,6 +37,34 @@ export class Job {
         ...(options.metadata && Object.keys(options.metadata).length > 0 && { metadata: options.metadata }),
       },
     });
+  }
+
+  /**
+   * Current external ID (idempotency key). Undefined until set.
+   */
+  get externalId(): string | undefined {
+    return this._externalId;
+  }
+
+  /**
+   * Set or update the external ID after job creation. Use this when the
+   * upstream system returns its ID only after the work runs (e.g. SAP order
+   * number, Stripe payment intent).
+   *
+   * In per-job mode the started event hasn't been sent yet, so the new value
+   * is also stamped onto it — the server's first ingest matches on it.
+   * In batch mode the started event may already have flushed; the externalId
+   * is stamped onto the next terminal event, and the server fills it in.
+   *
+   * No-op if the job is already completed.
+   */
+  setExternalId(externalId: string): void {
+    if (this._completed) return;
+    this._externalId = externalId;
+    const startedEvent = this._events[0];
+    if (startedEvent && startedEvent.type === 'job.started') {
+      startedEvent.externalId = externalId;
+    }
   }
 
   /**
@@ -62,9 +92,16 @@ export class Job {
 
   /**
    * Mark the job as successfully completed.
+   *
+   * Pass `{ externalId }` to set the idempotency key at completion time
+   * (e.g. when the upstream system only returns its ID on success).
    */
-  async done(result?: unknown): Promise<void> {
+  async done(
+    result?: unknown,
+    options?: { externalId?: string },
+  ): Promise<void> {
     if (this._completed) return;
+    if (options?.externalId) this.setExternalId(options.externalId);
     this._completed = true;
 
     const startTs = this._events[0]?.timestamp ?? Date.now();
@@ -72,6 +109,7 @@ export class Job {
 
     this._events.push({
       jobId: this.id,
+      externalId: this._externalId,
       type: 'job.done',
       timestamp: now,
       data: {
@@ -86,8 +124,12 @@ export class Job {
   /**
    * Mark the job as failed.
    */
-  async failed(error: unknown): Promise<void> {
+  async failed(
+    error: unknown,
+    options?: { externalId?: string },
+  ): Promise<void> {
     if (this._completed) return;
+    if (options?.externalId) this.setExternalId(options.externalId);
     this._completed = true;
 
     const startTs = this._events[0]?.timestamp ?? Date.now();
@@ -107,6 +149,7 @@ export class Job {
 
     this._events.push({
       jobId: this.id,
+      externalId: this._externalId,
       type: 'job.failed',
       timestamp: now,
       data: {
@@ -121,8 +164,12 @@ export class Job {
   /**
    * Mark the job as skipped.
    */
-  async skip(reason: string): Promise<void> {
+  async skip(
+    reason: string,
+    options?: { externalId?: string },
+  ): Promise<void> {
     if (this._completed) return;
+    if (options?.externalId) this.setExternalId(options.externalId);
     this._completed = true;
 
     const startTs = this._events[0]?.timestamp ?? Date.now();
@@ -130,6 +177,7 @@ export class Job {
 
     this._events.push({
       jobId: this.id,
+      externalId: this._externalId,
       type: 'job.skipped',
       timestamp: now,
       data: {
@@ -144,8 +192,12 @@ export class Job {
   /**
    * Mark the job for manual review.
    */
-  async review(reason: string): Promise<void> {
+  async review(
+    reason: string,
+    options?: { externalId?: string },
+  ): Promise<void> {
     if (this._completed) return;
+    if (options?.externalId) this.setExternalId(options.externalId);
     this._completed = true;
 
     const startTs = this._events[0]?.timestamp ?? Date.now();
@@ -153,6 +205,7 @@ export class Job {
 
     this._events.push({
       jobId: this.id,
+      externalId: this._externalId,
       type: 'job.review',
       timestamp: now,
       data: {

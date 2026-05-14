@@ -168,4 +168,92 @@ describe('Job', () => {
       'job.done',
     ]);
   });
+
+  describe('setExternalId', () => {
+    it('exposes externalId via getter', () => {
+      const job = new Job('test-id', { type: 'test', externalId: 'ext-init' }, sendFn);
+      expect(job.externalId).toBe('ext-init');
+    });
+
+    it('returns undefined when no externalId was set at construction', () => {
+      const job = new Job('test-id', { type: 'test' }, sendFn);
+      expect(job.externalId).toBeUndefined();
+    });
+
+    it('updates externalId and retroactively stamps the started event', () => {
+      const job = new Job('test-id', { type: 'test' }, sendFn);
+      expect(job.getEvents()[0].externalId).toBeUndefined();
+
+      job.setExternalId('ext-late');
+
+      expect(job.externalId).toBe('ext-late');
+      expect(job.getEvents()[0].externalId).toBe('ext-late');
+    });
+
+    it('stamps externalId on the terminal event', async () => {
+      const job = new Job('test-id', { type: 'test' }, sendFn);
+      job.setExternalId('ext-late');
+      await job.done();
+
+      const terminal = capturedEvents.find(e => e.type === 'job.done');
+      expect(terminal?.externalId).toBe('ext-late');
+    });
+
+    it('no-ops after completion', async () => {
+      const job = new Job('test-id', { type: 'test' }, sendFn);
+      await job.done();
+      job.setExternalId('ext-too-late');
+
+      expect(job.externalId).toBeUndefined();
+    });
+
+    it('accepts externalId via terminal method option (done)', async () => {
+      const job = new Job('test-id', { type: 'test' }, sendFn);
+      await job.done({ ok: true }, { externalId: 'sap-4711' });
+
+      expect(job.externalId).toBe('sap-4711');
+      const started = capturedEvents.find(e => e.type === 'job.started');
+      const terminal = capturedEvents.find(e => e.type === 'job.done');
+      expect(started?.externalId).toBe('sap-4711');
+      expect(terminal?.externalId).toBe('sap-4711');
+    });
+
+    it('accepts externalId via terminal method option (failed)', async () => {
+      const job = new Job('test-id', { type: 'test' }, sendFn);
+      await job.failed(new Error('boom'), { externalId: 'sap-4712' });
+
+      expect(job.externalId).toBe('sap-4712');
+      expect(capturedEvents.find(e => e.type === 'job.failed')?.externalId).toBe('sap-4712');
+    });
+
+    it('accepts externalId via terminal method option (skip)', async () => {
+      const job = new Job('test-id', { type: 'test' }, sendFn);
+      await job.skip('not needed', { externalId: 'sap-4713' });
+
+      expect(capturedEvents.find(e => e.type === 'job.skipped')?.externalId).toBe('sap-4713');
+    });
+
+    it('accepts externalId via terminal method option (review)', async () => {
+      const job = new Job('test-id', { type: 'test' }, sendFn);
+      await job.review('suspicious', { externalId: 'sap-4714' });
+
+      expect(capturedEvents.find(e => e.type === 'job.review')?.externalId).toBe('sap-4714');
+    });
+
+    it('option-based externalId on done() overrides earlier setExternalId', async () => {
+      const job = new Job('test-id', { type: 'test' }, sendFn);
+      job.setExternalId('first');
+      await job.done(undefined, { externalId: 'final' });
+
+      expect(job.externalId).toBe('final');
+      expect(capturedEvents.find(e => e.type === 'job.done')?.externalId).toBe('final');
+    });
+
+    it('terminal event still carries externalId set at construction', async () => {
+      const job = new Job('test-id', { type: 'test', externalId: 'ext-init' }, sendFn);
+      await job.done();
+
+      expect(capturedEvents.find(e => e.type === 'job.done')?.externalId).toBe('ext-init');
+    });
+  });
 });
