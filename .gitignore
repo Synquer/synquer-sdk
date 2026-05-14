@@ -32,4 +32,4 @@ pnpm-lock.yaml
 .npmrc
 
 # Local notes
-RELEASE.md
+docs-local
