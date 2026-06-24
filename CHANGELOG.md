@@ -4,6 +4,14 @@ All notable changes to `synquer-sdk` are documented here.
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-06-24
+
+### Fixed
+- `job.failed(error)` no longer collapses a non-`Error` value to the string `"[object Object]"`. When the thrown value is a plain object (a node-soap SOAP fault, an axios error, any rejected object), the SDK now uses its `.message` if present, and otherwise serializes the object so the real detail reaches the dashboard.
+- The error serializer is circular-safe and length-bounded, so passing an object that holds a live socket or other circular reference (e.g. a raw axios error) can no longer throw a `Converting circular structure to JSON` error out of `job.failed()`. Telemetry stays fire-and-forget.
+
+[0.2.1]: https://github.com/Synquer/synquer-sdk/releases/tag/0.2.1
+
 ## [0.2.0] - 2026-05-14
 
 ### Added
