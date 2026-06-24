@@ -1,6 +1,57 @@
 import type { JobOptions, EventOptions, IngestEvent } from './types.js';
 
 /**
+ * Serialize an arbitrary value to JSON without throwing on circular
+ * references (e.g. an axios/node-soap error whose `response` holds a live
+ * socket) and without producing an unbounded payload. Telemetry must never
+ * throw into application code, so this always returns a string.
+ */
+function safeStringify(value: unknown, maxLen = 2000): string {
+  const seen = new WeakSet<object>();
+  let out: string;
+  try {
+    out =
+      JSON.stringify(value, (_key, val) => {
+        if (typeof val === 'bigint') return val.toString();
+        if (typeof val === 'object' && val !== null) {
+          if (seen.has(val)) return '[Circular]';
+          seen.add(val);
+        }
+        return val;
+      }) ?? String(value);
+  } catch {
+    out = String(value);
+  }
+  return out.length > maxLen ? out.slice(0, maxLen) + '…[truncated]' : out;
+}
+
+/**
+ * Extract a readable `{ message, stack? }` from whatever an application throws.
+ *
+ * Crucially, a non-Error object (a node-soap SOAP fault, a rejected plain
+ * object, an axios error) is no longer collapsed to the useless string
+ * "[object Object]": we use its `.message` if present, otherwise serialize it
+ * so the real detail survives.
+ */
+function normalizeError(error: unknown): { message: string; stack?: string } {
+  if (error instanceof Error) {
+    return { message: error.message, stack: error.stack };
+  }
+  if (typeof error === 'string') {
+    return { message: error };
+  }
+  if (error && typeof error === 'object') {
+    const e = error as Record<string, unknown>;
+    const stack = typeof e.stack === 'string' ? e.stack : undefined;
+    if (typeof e.message === 'string' && e.message.length > 0) {
+      return { message: e.message, ...(stack && { stack }) };
+    }
+    return { message: safeStringify(error), ...(stack && { stack }) };
+  }
+  return { message: String(error) };
+}
+
+/**
  * Represents a single sync job being tracked.
  *
  * Collects events locally and provides methods to complete the job.
@@ -135,17 +186,7 @@ export class Job {
     const startTs = this._events[0]?.timestamp ?? Date.now();
     const now = Date.now();
 
-    let errorData: Record<string, unknown>;
-    if (error instanceof Error) {
-      errorData = {
-        message: error.message,
-        stack: error.stack,
-      };
-    } else if (typeof error === 'string') {
-      errorData = { message: error };
-    } else {
-      errorData = { message: String(error) };
-    }
+    const errorData = normalizeError(error);
 
     this._events.push({
       jobId: this.id,

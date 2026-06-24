@@ -109,6 +109,36 @@ describe('Job', () => {
     expect(failedEvent.data?.error).toEqual({ message: 'Something went wrong' });
   });
 
+  it('marks job as failed with a non-Error object carrying a message', async () => {
+    const job = new Job('test-id', { type: 'test' }, sendFn);
+    // node-soap / axios style rejection: a plain object, not an Error
+    await job.failed({ message: 'SAP fault 500: Invalid XML', faultcode: 500 });
+
+    const failedEvent = capturedEvents[1];
+    expect(failedEvent.data?.error).toEqual({ message: 'SAP fault 500: Invalid XML' });
+  });
+
+  it('serializes a non-Error object without a message instead of "[object Object]"', async () => {
+    const job = new Job('test-id', { type: 'test' }, sendFn);
+    await job.failed({ Fault: { faultcode: 500, faultstring: 'Invalid XML' } });
+
+    const failedEvent = capturedEvents[1];
+    const message = (failedEvent.data?.error as { message: string }).message;
+    expect(message).not.toBe('[object Object]');
+    expect(message).toContain('Invalid XML');
+  });
+
+  it('does not throw on a circular non-Error object', async () => {
+    const job = new Job('test-id', { type: 'test' }, sendFn);
+    const circular: Record<string, unknown> = { code: 'ECIRCULAR' };
+    circular.self = circular;
+
+    await expect(job.failed(circular)).resolves.toBeUndefined();
+    const failedEvent = capturedEvents[1];
+    const message = (failedEvent.data?.error as { message: string }).message;
+    expect(message).toContain('[Circular]');
+  });
+
   it('marks job as skipped', async () => {
     const job = new Job('test-id', { type: 'test' }, sendFn);
     await job.skip('Already processed');
